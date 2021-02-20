@@ -1,0 +1,275 @@
+---
+title: "Data 622 Homework 1"
+author: "Maryluz Cruz"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+---
+
+```{r message=FALSE, warning=FALSE}
+library(DataExplorer)
+library(palmerpenguins)
+library(psych)
+library(GGally)
+library(tidyverse)
+library(ggplot2)
+library(reshape)
+library(kableExtra)
+library(MASS)
+library(caret)
+library(pROC)
+library(nnet)
+
+```
+
+
+#### For this assignment we are going to use the palmerpenguins package. more information on that package can be found here. 
+https://allisonhorst.github.io/palmerpenguins/articles/intro.html
+
+### Lets take a look at the palmerpenguins package
+
+
+```{r}
+glimpse(penguins)
+```
+
+```{r}
+colnames(penguins)
+```
+
+
+
+## Species and Island
+
+```{r}
+penguinsb<-penguins%>% 
+  count(species, island)
+kable(penguinsb)  
+```
+Here you can see that there are 3 different type of species which are Adelie, Chinstrap, and Gentoo.There are 3 different Islands which are Biscoe, Dream, Torgersen. Adelie has the most with a totla of 158, but they are divided within the three different islands. While Chinstrap has the least with only 68 and only on Dream, and Gentoo have a total of 124 and only on Biscoe. 
+
+
+### Missing Data 
+
+```{r}
+plot_missing(penguins)
+```
+
+
+The missing data needs to be removed. 
+
+```{r}
+penguins_tf<-na.omit(penguins)
+```
+
+
+
+### Density plot
+
+
+```{r}
+plot_density(penguins_tf)
+```
+
+### Histogram
+
+
+```{r}
+plot_histogram(penguins_tf)
+```
+
+
+### Pairs.Panel
+
+```{r fig.height=8, fig.width=10, message=FALSE, warning=FALSE}
+pairs.panels(penguins_tf)
+```
+
+
+### GGPairs
+
+
+```{r fig.height=10, fig.width=10, message=FALSE, warning=FALSE}
+ggpairs(penguins_tf)
+```
+
+## Part 1
+
+### Choosing the Independent Variables
+
+The independent variables that will definitely be used are island, bill_length_mm,  bill_depth_mm, flipper_length_mm, body_mass_g,
+but do we need year and sex as an independent variable. Would sex and year allow us to know what specific species was most likely born this year, and whether or not a specific species has more males than females. A quick comparison here can show us 
+
+```{r}
+penguinstable<-penguins_tf%>% 
+  count(species, sex)
+kable(penguinstable) 
+```
+
+Looking at the numbers there doesn't seem to be a noticeable difference, so sex of the species does not need to be included. 
+
+
+
+
+```{r}
+penguinstable<-penguins_tf%>% 
+  count(species,  year)
+kable(penguinstable) 
+```
+
+
+Same thing could be said about the year so this would not be needed as a independent variable. Also island would not be included because we already know that Adelie is spread out the three islands while Chinstrap is only on one island as well as Gentoo.
+
+
+
+## Dependent Variable 
+
+Since species will be the dependent variable, and the fact that there are 3 categories under species how does one decide to manipulate the dependent variable species. 
+
+```{r}
+penguins_tfc<-penguins_tf%>%
+  group_by(species)%>%
+  count()
+kable(penguins_tfc)
+```
+
+
+
+
+Considering that the Adelie Species has the most out of all of the species and the fact that they are spread out throughout the three different island it is decided that it would be Adelie vs Other Species, where 1 is Adelie and 0 is Other Species. 
+
+
+
+```{r}
+penguins_tf$species <- ifelse(penguins_tf$species=="Adelie", 1, 0)
+```
+
+
+
+
+
+
+
+## Logistic regression with a binary outcome
+
+
+```{r message=FALSE, warning=FALSE}
+mdl1<-glm(species ~ bill_length_mm +  bill_depth_mm + flipper_length_mm  + body_mass_g  , family = "binomial", data = penguins_tf)
+summary(mdl1)
+```
+
+### Variable Interpretations
+
+- bill_length_mm -  This variable has an estimate of -5.106, since its a negative number it would mean that the bill_length of the Adelie are normally small, and that the Chinstrap and the Gentoo have a larger bill_length. 
+
+- bill_depth_mm  - This variable has an estimate of 8.953 which means that the Adelie have a bigger bill_depth, and the Chinstrap and Gentoo are least likely to have a larger bill_depth.    
+
+- flipper_length_mm - This variable has an estimate of .054, so that would mean that the Adelie are least likely to have a large flipper_lenth, and the Gentoo and Chinstrap do.  
+
+- body_mass_g - This variable has an estimate of .00621 means that Adelie are least likely to have a big body-mass
+
+
+## Part 2
+
+### AUC, Accuracy, TPR, FPR, TNR, FNR
+
+```{r}
+prob_pen<- predict(mdl1, type="response")
+pred_pen<- ifelse(prob_pen > .5,1,0)
+
+
+confusionMatrix(as.factor(pred_pen), as.factor(penguins_tf$species),
+                positive = "1")
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+plot(roc(penguins_tf$species, prob_pen), print.auc=TRUE)
+```
+
+
+- AUC: 1.00
+- Accuracy: 0.991
+- TPR (Sensitivity): 0.9863
+- FPR (1 - TNR): 0.0137
+- TNR (Specificity): 0.9947
+- FNR (1 - TPR): 0.0053
+
+
+## Part 3
+
+### Multinomial Logistic Regression
+
+Again we remove the missing values
+
+```{r}
+penguins_tf2<- na.omit(penguins)
+```
+
+
+Adelie again will be the reference, and the independent values bill_length_mm +  bill_depth_mm + flipper_length_mm  + body_mass_g, and the non numerical values will not be included.
+
+
+```{r}
+penguins_tf2$species = relevel( penguins_tf2$species, ref = 'Adelie')
+multipen = multinom(species ~ bill_length_mm +  bill_depth_mm + flipper_length_mm  + body_mass_g , data= penguins_tf2 )
+```
+
+
+```{r}
+summary(multipen)
+```
+
+
+```{r}
+(z <- summary(multipen)$coefficients / summary( multipen)$standard.errors )
+```
+
+
+```{r}
+(p <- (1 - pnorm(abs(z), 0, 1 )) *2 )
+```
+
+
+### Variable Interpretations
+
+
+### For the coefficients the Chinstrap class 
+- bill_length_mm coefficients of 58.94543 means one unit increase in bill_length increase the log odds of being Chinstrap vs Adelie by 58.94543 units of log odds. 
+
+- bill_depth_mm coefficients of -84.81399 means  one unit increase in bill_depth decrease the log odds of being Chinstrap vs Adelie by 84.81399  units of log odds.
+
+
+- flipper_length_mm coefficients of -2.643720   means  one unit increase in flipper_length  decrease the log odds of being Chinstrap vs Adelie by 2.643720  units of log odds.
+
+- body_mass_g coefficients of -0.132491128   means  one unit increase in body_mass_g decrease the log odds of being Chinstrap vs Adelie by 0.132491128  units of log odds.
+
+
+### For the coefficients the Gentoo class 
+
+- bill_length_mm coefficients of 43.75912 means one unit decrease in bill_length increase the log odds of being Gentoo vs Adelie by 43.75912 units of log odds. 
+
+- bill_depth_mm coefficients of -91.60364  means one unit increase in bill_depth decrease the log odds of being Gentoo vs Adelie by 91.60364   units of log odds.
+
+
+- flipper_length_mm coefficients of -1.639715   means  one unit increase in flipper_length  decrease the log odds of being Gentoo vs Adelie by 1.639715  units of log odds.
+
+- body_mass_g coefficients of 0.007448619   means  one unit increase in body_mass_g increase the log odds of being Gentoo vs Adelie by 0.007448619  units of log odds.
+
+
+## References
+
+
+1. https://stackoverflow.com/questions/30002013/error-in-confusion-matrix-the-data-and-reference-factors-must-have-the-same-nu
+
+2. https://stats.idre.ucla.edu/r/dae/multinomial-logistic-regression/
+
+3. http://www.sthda.com/english/articles/36-classification-methods-essentials/143-evaluation-of-classification-model-accuracy-essentials/
+
+4. https://jangorecki.gitlab.io/data.table/library/data.table/html/na.omit.data.table.html
+
+
+
+
