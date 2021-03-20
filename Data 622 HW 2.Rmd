@@ -1,0 +1,262 @@
+---
+title: "Data 622 HW 2"
+author: "Maryluz Cruz"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+
+```{r message=FALSE, warning=FALSE}
+require(psych)
+require(caret)
+require(e1071)
+require(DataExplorer)
+require(palmerpenguins)
+require(MASS)
+require(tidyverse)
+require(GGally)
+```
+
+
+
+## a. Linear Discriminant Analysis 
+a. You want to evaluate all the ‘features’ or dependent variables and see what should be in your model. Please comment on your choices.
+
+b. Just a suggestion: You might want to consider exploring featurePlot on the caret package. Basically, you look at each of the
+features/dependent variables and see how they are different based on species. Simply eye-balling this might give you an idea about which would be strong ‘classifiers’ (aka predictors).
+
+c. Fit your LDA model using whatever predictor variables you deem appropriate. Feel free to split the data into training and test sets before fitting the model.
+
+d. Look at the fit statistics/ accuracy rates.
+
+### Data Exploration 
+
+The penguins data has 344 rows of data and 8 columns. I consist of three different species the Adelie, the Chinstrap, and the Gentoo. The Adelie is spread out three different islands while the Chinstrap and the Gentoo reside in only one island. 
+
+
+
+```{r}
+str(penguins)
+```
+
+
+```{r}
+summary(penguins)
+```
+
+
+### Remove Columns and missing Data
+
+```{r}
+penguins_tf<- penguins[-c(2,7,8)]
+```
+
+```{r}
+penguins_tf<-na.omit(penguins_tf)
+```
+
+
+#### What features to choose?
+
+After doing the featurePlot and other visuals we see that we should keep are bill_length_mm, bill_depth_mm, flipper_length_mm,  body_mass_g. The features that should be removed are island, sex and year, since each of these values were not that far apart that would make a dramatic change. When looking at the correlation of the values though you can see that bill_depth_mm and flipper_length_mm are negatively correlated with species so they are the weaker features of the data.But we will see how that affects the accuracy.
+
+
+
+### GGPairs
+
+```{r fig.height=10, fig.width=10, message=FALSE, warning=FALSE}
+ggpairs(penguins_tf, aes (fill= species))
+```
+
+
+```{r fig.height=5, fig.width=10}
+pairs.panels(penguins_tf)
+```
+
+
+### featurePlot
+
+
+```{r fig.height=10, fig.width=10}
+featurePlot(x = penguins_tf,
+        y = penguins_tf$species,
+        plot = "pairs",
+        auto.key = list(columns = 3)) 
+```
+
+
+
+## Data Preparation
+
+
+### Split The Data 
+
+- Here the data gets split into a train and test samples with a 70/30 ratio
+
+```{r}
+set.seed(123)
+penguins_samples <- penguins_tf$species %>%
+  createDataPartition(p = 0.70, list = FALSE)
+train_penguins <- penguins_tf[penguins_samples, ]
+test_penguins <- penguins_tf[-penguins_samples, ]
+```
+
+
+
+### Normalize the data
+
+- Categorical variables are automatically ignored, although they have been removed already
+
+```{r}
+# Estimate preprocessing parameters
+preproc.param <- train_penguins %>% 
+  preProcess(method = c("center", "scale"))
+# Transform the data using the estimated parameters
+train_penguins_tf <- preproc.param %>% predict(train_penguins)
+test_penguins_tf <- preproc.param %>% predict(test_penguins)
+```
+
+
+
+## Linear Discriminant Analysis
+
+Fit the data
+```{r}
+# Fit the model
+model1 <- lda(species~., data = train_penguins_tf)
+model1
+```
+
+
+
+
+### Accuracy and Prediction
+
+
+Check for accuracy
+```{r}
+# Make predictions
+predictions <- model1 %>% predict(test_penguins_tf)
+# Model accuracy
+acc1<-mean(predictions$class==test_penguins_tf$species)
+acc1
+```
+- Correctly classified 100% of observations 
+
+
+
+```{r}
+# Predicted classes
+head(predictions$class, 10)
+# Predicted probabilities of class memebership.
+head(predictions$posterior,10) 
+# Linear discriminant
+head(predictions$x, 3) 
+```
+
+
+
+```{r}
+lda.data <- cbind(train_penguins_tf, predict(model1)$x)
+ggplot(lda.data, aes(LD1, LD2)) +
+  geom_point(aes(color = species))
+```
+
+Looking at this you see that the Gentoo species is in the negative side of the LD1. 
+
+
+
+
+## b. Quadratic Discriminant Analysis 
+
+Quadratic Discriminant Analysis does not work with all of the features, one gets a warning when features sex and isaland are included
+
+Fit the model 
+```{r}
+# Fit the model
+model2 <- qda(species~., data = train_penguins_tf)
+model2
+
+```
+
+
+Predictions and Accuracy
+```{r}
+# Make predictions
+predictions <- model2 %>% predict(test_penguins_tf)
+# Model accuracy
+acc2<- mean(predictions$class == test_penguins_tf$species)
+acc2
+```
+
+
+```{r}
+# Predicted classes
+head(predictions$class, 10)
+# Predicted probabilities of class membership.
+head(predictions$posterior,10) 
+```
+
+
+
+
+## c. Naïve Bayes 
+
+Fit the model 
+```{r}
+model3 <- naiveBayes(species ~., data = train_penguins_tf)
+model3
+```
+
+
+
+Predictions and Accuracy
+```{r message=FALSE, warning=FALSE}
+predicted.classes<- model3 %>% predict(test_penguins_tf)
+# Model accuracy
+acc3<- mean(predicted.classes == test_penguins_tf$species)
+acc3
+```
+
+```{r}
+plot(predicted.classes)
+```
+
+
+
+d. Comment on the models fits/strength/weakness/accuracy for all these three models that you worked with.
+
+
+```{r}
+title <- c( "LDA Accuracy", "QDA Accuracy", "Naive Bayes Accuracy")
+accuracy<-c(acc1, acc2, acc3)
+
+accuracytbl<-data.frame (title,accuracy)
+
+```
+ 
+### Lets look at the accuray of the three different models.
+
+```{r}
+accuracytbl
+```
+
+Looking at the accuracy LDA and QDA both of the accuracy are 100 also when it comes to the means they are the same. The naive bayes has a high accuracy rate but it is not 100% in comparison to the other two. Although LDA and QDA did get the same accuracy LDA has the inclusion of linear discriminant which gives you another look at the data. For this I would choose the LDA classifier.  
+
+When looking at the actual values of the fit for all models Adelie has a negative values on bill_length, flipper_length and body_mass so in comparison to the other species Adelie in those areas are smaller in comparison to the other two species. Looking at Chinstrap flipper_length and body_mass is also negative so the Gentoo is bigger in those areas. Gentoo only has a negative in bill_depth, so they seem to be a bigger species. Looking at that you can see why those features were negatively correlated but they are useful because you can easily compare the species by those features. 
+
+   
+References
+
+1. http://www.sthda.com/english/articles/36-classification-methods-essentials/146-discriminant-analysis-essentials-in-r/
+
+2. https://www.r-bloggers.com/2018/01/understanding-naive-bayes-classifier-using-r/
+
+
